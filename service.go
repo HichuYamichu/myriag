@@ -1,11 +1,36 @@
 package main
 
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/bwmarrin/snowflake"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/spf13/viper"
+)
+
 // Service performs operations on docker client
-type Service struct{}
+type Service struct {
+	docker   *client.Client
+	snowNode *snowflake.Node
+}
 
 // NewService creates new upload service
 func NewService() *Service {
-	return &Service{}
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+	cli.NegotiateAPIVersion(ctx)
+
+	node, _ := snowflake.NewNode(0)
+	return &Service{docker: cli, snowNode: node}
 }
 
 // ListLanguages return a list of avalible languages
@@ -20,12 +45,170 @@ func (s *Service) ListContainers() (error, error) {
 
 // CreateContainer creates a new container
 func (s *Service) CreateContainer(lang string) error {
+	ctx := context.Background()
+	cresp, err := s.docker.ContainerCreate(ctx,
+		&container.Config{
+			Image:           fmt.Sprintf("myriag_%s:latest", lang),
+			User:            "1000:1000",
+			WorkingDir:      "/tmp/",
+			Tty:             true,
+			NetworkDisabled: true,
+			Entrypoint:      []string{"/bin/sh"},
+		},
+		&container.HostConfig{
+			AutoRemove: true,
+			Resources: container.Resources{
+				Memory:     1.28e+8,
+				MemorySwap: 1.28e+8,
+			},
+		},
+		nil,
+		fmt.Sprintf("myriag_%s", lang),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = s.docker.ContainerStart(ctx, cresp.ID, types.ContainerStartOptions{})
+	if err != nil {
+		return err
+	}
+
+	iresp, err := s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			Cmd: []string{"mkdir", "eval"},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return err
+	}
+
+	iresp, err = s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			Cmd: []string{"chmod", "711", "eval"},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // Eval evaluates provided code
-func (s *Service) Eval(language string, code string) (error, error) {
-	return nil, nil
+func (s *Service) Eval(lang string, code string) (string, error) {
+	languages := viper.GetStringSlice("languages")
+	exists := false
+	for _, supportedLanguage := range languages {
+		if supportedLanguage == lang {
+			exists = true
+		}
+	}
+	if !exists {
+		return "", errLanguageNotFound
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+
+	sf := s.snowNode.Generate()
+	evalDir := fmt.Sprintf("eval/%d", sf)
+
+	iresp, err := s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			Cmd: []string{"mkdir", evalDir, "&&", "chmod", "777", evalDir},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return "", err
+	}
+
+	iresp, err = s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			User:         "1001:1001",
+			AttachStdout: true,
+			AttachStderr: true,
+			WorkingDir:   fmt.Sprintf("/tmp/eval/%d", sf),
+			Cmd:          []string{"/bin/sh", "/var/run/run.sh", code},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	aresp, err := s.docker.ContainerExecAttach(ctx, iresp.ID, types.ExecStartCheck{})
+	if err != nil {
+		return "", err
+	}
+	defer aresp.Close()
+
+	var outBuf, errBuf bytes.Buffer
+	outputDone := make(chan error)
+
+	go func() {
+		_, err = stdcopy.StdCopy(&outBuf, &errBuf, aresp.Reader)
+		outputDone <- err
+	}()
+
+	select {
+	case err := <-outputDone:
+		if err != nil {
+			return "", err
+		}
+		break
+
+	case <-ctx.Done():
+		return "", errTimeout
+	}
+
+	_, err = s.docker.ContainerExecInspect(ctx, iresp.ID)
+	if err != nil {
+		return "", err
+	}
+
+	var evaled string
+	if errBuf.Len() != 0 {
+		evaled = errBuf.String()
+	} else {
+		evaled = outBuf.String()
+	}
+
+	iresp, err = s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			Cmd: []string{"rm", "-rf", evalDir},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return "", err
+	}
+
+	return evaled, nil
 }
 
 // Cleanup cleans up containers

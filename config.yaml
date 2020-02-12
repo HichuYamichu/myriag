@@ -1,2 +1,7 @@
 host: localhost
 port: 3000
+languages:
+  - javascript
+  - go
+  - rust
+  - typescript
