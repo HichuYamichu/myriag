@@ -18,11 +18,7 @@ func NewHandler(dockerServ *Service) *Handler {
 
 // Languages responds with a list of avalible languages
 func (h *Handler) Languages(c echo.Context) error {
-	langs, err := h.dockerServ.ListLanguages()
-	if err != nil {
-		return h.Error(c, err)
-	}
-
+	langs := h.dockerServ.ListLanguages()
 	return c.JSON(http.StatusOK, langs)
 }
 

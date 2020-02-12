@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -34,13 +35,27 @@ func NewService() *Service {
 }
 
 // ListLanguages return a list of avalible languages
-func (s *Service) ListLanguages() (error, error) {
-	return nil, nil
+func (s *Service) ListLanguages() []string {
+	langs := viper.GetStringSlice("languages")
+	return langs
 }
 
 // ListContainers return a list of avalible containers
-func (s *Service) ListContainers() (error, error) {
-	return nil, nil
+func (s *Service) ListContainers() ([]string, error) {
+	ctx := context.Background()
+	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]string, 0)
+	for _, cont := range containers {
+		contName := cont.Names[0][1:]
+		if strings.HasPrefix(contName, "myriag_") {
+			res = append(res, contName)
+		}
+	}
+	return res, nil
 }
 
 // CreateContainer creates a new container
@@ -130,7 +145,22 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		ctx,
 		fmt.Sprintf("myriag_%s", lang),
 		types.ExecConfig{
-			Cmd: []string{"mkdir", evalDir, "&&", "chmod", "777", evalDir},
+			Cmd: []string{"mkdir", evalDir},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return "", err
+	}
+
+	iresp, err = s.docker.ContainerExecCreate(
+		ctx,
+		fmt.Sprintf("myriag_%s", lang),
+		types.ExecConfig{
+			Cmd: []string{"chmod", "777", evalDir},
 		},
 	)
 	if err != nil {
@@ -148,7 +178,7 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 			User:         "1001:1001",
 			AttachStdout: true,
 			AttachStderr: true,
-			WorkingDir:   fmt.Sprintf("/tmp/eval/%d", sf),
+			WorkingDir:   fmt.Sprintf("/tmp/%s", evalDir),
 			Cmd:          []string{"/bin/sh", "/var/run/run.sh", code},
 		},
 	)
@@ -212,6 +242,23 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 }
 
 // Cleanup cleans up containers
-func (s *Service) Cleanup() (error, error) {
-	return nil, nil
+func (s *Service) Cleanup() ([]string, error) {
+	ctx := context.Background()
+	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]string, 0)
+	for _, cont := range containers {
+		contName := cont.Names[0][1:]
+		if strings.HasPrefix(contName, "myriag_") {
+			err = s.docker.ContainerRemove(ctx, cont.ID, types.ContainerRemoveOptions{Force: true})
+			if err != nil {
+				continue
+			}
+			res = append(res, contName)
+		}
+	}
+	return res, nil
 }
