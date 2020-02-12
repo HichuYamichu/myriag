@@ -47,7 +47,7 @@ Example response:
 Errors with 404 if `language` is not found, `504` if evaluation timed out, or `500` if evaluation failed for other reasons.
 
 ### **GET** `/containers`
-List of containers being handled by Myrias.
+List of containers being handled by Myriag.
 
 ### **POST** `/cleanup`
 Kill all containers, giving back the names of the containers killed.
