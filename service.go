@@ -23,16 +23,8 @@ type Service struct {
 }
 
 // NewService creates new upload service
-func NewService() *Service {
-	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		panic(err)
-	}
-	cli.NegotiateAPIVersion(ctx)
-
-	node, _ := snowflake.NewNode(0)
-	return &Service{docker: cli, snowNode: node}
+func NewService(dockerClient *client.Client, snowflakeNode *snowflake.Node) *Service {
+	return &Service{docker: dockerClient, snowNode: snowflakeNode}
 }
 
 // ListLanguages return a list of avalible languages

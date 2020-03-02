@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/bwmarrin/snowflake"
+	"github.com/docker/docker/client"
 	"github.com/hichuyamichu/myriag/errors"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -10,6 +13,17 @@ import (
 )
 
 func newServer() *echo.Echo {
+	ctx := context.Background()
+	dockerCLI, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+	dockerCLI.NegotiateAPIVersion(ctx)
+	node, _ := snowflake.NewNode(0)
+
+	dockerService := NewService(dockerCLI, node)
+	dockerHandler := NewHandler(dockerService)
+
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = httpErrorHandler
@@ -17,9 +31,6 @@ func newServer() *echo.Echo {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-
-	dockerService := NewService()
-	dockerHandler := NewHandler(dockerService)
 
 	api := e.Group("/api")
 	api.GET("/languages", dockerHandler.Languages)
