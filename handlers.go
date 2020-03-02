@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/hichuyamichu/myriag/errors"
 	"github.com/labstack/echo/v4"
 )
 
@@ -24,9 +25,10 @@ func (h *Handler) Languages(c echo.Context) error {
 
 // Containers responds with a list created containers
 func (h *Handler) Containers(c echo.Context) error {
+	const op errors.Op = "handler.Containers"
 	containers, err := h.dockerServ.ListContainers()
 	if err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return c.JSON(http.StatusOK, containers)
@@ -34,18 +36,19 @@ func (h *Handler) Containers(c echo.Context) error {
 
 // CreateContainer handles creating new container
 func (h *Handler) CreateContainer(c echo.Context) error {
+	const op errors.Op = "handler.CreateContainer"
 	type createContainerPayload struct {
 		Language string `json:"language"`
 	}
 
 	p := &createContainerPayload{}
 	if err := c.Bind(p); err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Invalid, op)
 	}
 
 	err := h.dockerServ.CreateContainer(p.Language)
 	if err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return c.NoContent(http.StatusCreated)
@@ -53,6 +56,7 @@ func (h *Handler) CreateContainer(c echo.Context) error {
 
 // Eval handles code evaluation
 func (h *Handler) Eval(c echo.Context) error {
+	const op errors.Op = "handler.Eval"
 	type evalPayload struct {
 		Language string `json:"language"`
 		Code     string `json:"code"`
@@ -64,12 +68,12 @@ func (h *Handler) Eval(c echo.Context) error {
 
 	p := &evalPayload{}
 	if err := c.Bind(p); err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Invalid, op)
 	}
 
 	res, err := h.dockerServ.Eval(p.Language, p.Code)
 	if err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return c.JSON(http.StatusOK, &evalResponce{Result: res})
@@ -77,21 +81,11 @@ func (h *Handler) Eval(c echo.Context) error {
 
 // Cleanup handles cleaning up
 func (h *Handler) Cleanup(c echo.Context) error {
+	const op errors.Op = "handler.Cleanup"
 	containers, err := h.dockerServ.Cleanup()
 	if err != nil {
-		return h.Error(c, err)
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return c.JSON(http.StatusOK, containers)
-}
-
-func (h *Handler) Error(c echo.Context, err error) error {
-	switch err {
-	case errTimeout:
-		return echo.NewHTTPError(http.StatusGatewayTimeout)
-	case errLanguageNotFound:
-		return echo.NewHTTPError(http.StatusNotFound, err.Error())
-	default:
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
 }

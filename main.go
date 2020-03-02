@@ -16,6 +16,7 @@ func main() {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
+	viper.AddConfigPath("/etc/myriag")
 	err := viper.ReadInConfig()
 	if err != nil {
 		log.Fatalf("fatal error config file: %s", err)

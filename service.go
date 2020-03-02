@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/hichuyamichu/myriag/errors"
 	"github.com/spf13/viper"
 )
 
@@ -42,10 +43,11 @@ func (s *Service) ListLanguages() []string {
 
 // ListContainers return a list of avalible containers
 func (s *Service) ListContainers() ([]string, error) {
+	const op errors.Op = "service.ListContainers"
 	ctx := context.Background()
 	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, errors.E(err, errors.Internal, op)
 	}
 
 	res := make([]string, 0)
@@ -60,6 +62,7 @@ func (s *Service) ListContainers() ([]string, error) {
 
 // CreateContainer creates a new container
 func (s *Service) CreateContainer(lang string) error {
+	const op errors.Op = "service.CreateContainer"
 	ctx := context.Background()
 	cresp, err := s.docker.ContainerCreate(ctx,
 		&container.Config{
@@ -81,12 +84,12 @@ func (s *Service) CreateContainer(lang string) error {
 		fmt.Sprintf("myriag_%s", lang),
 	)
 	if err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	err = s.docker.ContainerStart(ctx, cresp.ID, types.ContainerStartOptions{})
 	if err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	iresp, err := s.docker.ContainerExecCreate(
@@ -97,11 +100,11 @@ func (s *Service) CreateContainer(lang string) error {
 		},
 	)
 	if err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	iresp, err = s.docker.ContainerExecCreate(
@@ -112,11 +115,11 @@ func (s *Service) CreateContainer(lang string) error {
 		},
 	)
 	if err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
@@ -124,6 +127,7 @@ func (s *Service) CreateContainer(lang string) error {
 
 // Eval evaluates provided code
 func (s *Service) Eval(lang string, code string) (string, error) {
+	const op errors.Op = "service.Eval"
 	languages := viper.GetStringSlice("languages")
 	exists := false
 	for _, supportedLanguage := range languages {
@@ -132,7 +136,7 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		}
 	}
 	if !exists {
-		return "", errLanguageNotFound
+		return "", errors.E(errors.Errorf("language not found"), errors.NotFound, op)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
@@ -149,11 +153,11 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	iresp, err = s.docker.ContainerExecCreate(
@@ -164,11 +168,11 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	iresp, err = s.docker.ContainerExecCreate(
@@ -183,12 +187,12 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	aresp, err := s.docker.ContainerExecAttach(ctx, iresp.ID, types.ExecStartCheck{})
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 	defer aresp.Close()
 
@@ -203,17 +207,17 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 	select {
 	case err := <-outputDone:
 		if err != nil {
-			return "", err
+			return "", errors.E(err, errors.Internal, op)
 		}
 		break
 
 	case <-ctx.Done():
-		return "", errTimeout
+		return "", errors.E(errors.Errorf("evaluation timeout"), errors.Timeout, op)
 	}
 
 	_, err = s.docker.ContainerExecInspect(ctx, iresp.ID)
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	var evaled string
@@ -231,11 +235,11 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	if err := s.docker.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return "", err
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	return evaled, nil
@@ -243,10 +247,11 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 
 // Cleanup cleans up containers
 func (s *Service) Cleanup() ([]string, error) {
+	const op errors.Op = "service.Cleanup"
 	ctx := context.Background()
 	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, errors.E(err, errors.Internal, op)
 	}
 
 	res := make([]string, 0)
