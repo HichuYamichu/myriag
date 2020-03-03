@@ -1,4 +1,4 @@
-package main
+package docker
 
 import (
 	"bytes"
@@ -35,7 +35,8 @@ func (s *Service) ListLanguages() []string {
 
 // ListContainers return a list of avalible containers
 func (s *Service) ListContainers() ([]string, error) {
-	const op errors.Op = "service.ListContainers"
+	const op errors.Op = "docker/service.ListContainers"
+
 	ctx := context.Background()
 	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
@@ -54,7 +55,8 @@ func (s *Service) ListContainers() ([]string, error) {
 
 // CreateContainer creates a new container
 func (s *Service) CreateContainer(lang string) error {
-	const op errors.Op = "service.CreateContainer"
+	const op errors.Op = "docker/service.CreateContainer"
+
 	ctx := context.Background()
 	cresp, err := s.docker.ContainerCreate(ctx,
 		&container.Config{
@@ -119,7 +121,8 @@ func (s *Service) CreateContainer(lang string) error {
 
 // Eval evaluates provided code
 func (s *Service) Eval(lang string, code string) (string, error) {
-	const op errors.Op = "service.Eval"
+	const op errors.Op = "docker/service.Eval"
+
 	languages := viper.GetStringSlice("languages")
 	exists := false
 	for _, supportedLanguage := range languages {
@@ -239,7 +242,8 @@ func (s *Service) Eval(lang string, code string) (string, error) {
 
 // Cleanup cleans up containers
 func (s *Service) Cleanup() ([]string, error) {
-	const op errors.Op = "service.Cleanup"
+	const op errors.Op = "docker/service.Cleanup"
+
 	ctx := context.Background()
 	containers, err := s.docker.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
