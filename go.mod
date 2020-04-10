@@ -21,8 +21,6 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/viper v1.6.2
-	golang.org/x/net v0.0.0-20200202094626-16171245cfb2 // indirect
-	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5 // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.31.0
 	gotest.tools/v3 v3.0.2 // indirect
