@@ -1,4 +1,4 @@
-package router
+package server
 
 import (
 	"github.com/labstack/echo/v4"
@@ -6,8 +6,7 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-// New creates new preconfigured router
-func New() *echo.Echo {
+func newRouter() *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = httpErrorHandler

@@ -1,4 +1,4 @@
-package router
+package server
 
 import (
 	"net/http"
@@ -9,14 +9,17 @@ import (
 
 func httpErrorHandler(err error, c echo.Context) {
 	var code int
-	var message string
-	appErr, ok := err.(*errors.Error)
-	if !ok {
+	var message interface{}
+	switch e := err.(type) {
+	case *errors.Error:
+		code = e.Kind.HTTPStatus()
+		message = e.Kind.String()
+	case *echo.HTTPError:
+		code = e.Code
+		message = e.Message
+	default:
 		code = http.StatusInternalServerError
 		message = http.StatusText(http.StatusInternalServerError)
-	} else {
-		code = appErr.Kind.HTTPStatus()
-		message = appErr.Kind.String()
 	}
 
 	if !c.Response().Committed {
