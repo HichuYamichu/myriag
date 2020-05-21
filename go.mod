@@ -11,7 +11,7 @@ require (
 	github.com/docker/engine v1.4.2-0.20191113042239-ea84732a7725 // indirect
 	github.com/docker/go-connections v0.4.0
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/go-playground/validator/v10 v10.2.0
+	github.com/go-playground/validator/v10 v10.3.0
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/echo/v4 v4.1.16
