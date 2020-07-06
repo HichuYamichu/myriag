@@ -3,6 +3,7 @@ module github.com/hichuyamichu/myriag
 go 1.13
 
 require (
+	docker.io/go-docker v1.0.0
 	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/containerd/containerd v1.3.3 // indirect

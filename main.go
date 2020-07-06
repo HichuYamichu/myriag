@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/client"
+	"github.com/hichuyamichu/myriag/docker"
 	"github.com/hichuyamichu/myriag/server"
 	"github.com/spf13/viper"
 )
@@ -25,13 +26,21 @@ func init() {
 }
 
 func main() {
-	dockerCLI, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Fatalf("fatal error docker CLI: %s", err)
 	}
-	dockerCLI.NegotiateAPIVersion(context.Background())
+	cli.NegotiateAPIVersion(context.Background())
+	docker := docker.New(cli)
+	// docker.BuildImage("go")
+	// docker.CreateContainer("go")
+	// err = docker.KillContainer("0094efb64852")
+	// _, err = docker.Cleanup()
+	if err != nil {
+		panic(err)
+	}
 
-	srv := server.New(dockerCLI)
+	srv := server.New(docker)
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -42,7 +51,7 @@ func main() {
 		srv.Shutdown(ctx)
 	}()
 
-	port := viper.GetString("port")
-	host := viper.GetString("host")
-	srv.Start(host, port)
+	// port := viper.GetString("port")
+	// host := viper.GetString("host")
+	// srv.Start(host, port)
 }
