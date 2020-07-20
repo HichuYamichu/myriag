@@ -4,21 +4,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/docker/docker/client"
+	"github.com/hichuyamichu/myriag/errors"
 )
 
-type kill struct {
-	cli    *client.Client
-	contID string
-}
+func (d *Docker) killContainer(contID string) error {
+	const op errors.Op = "docker/Docker.killContainer"
 
-func (k *kill) Do() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 
-	err := k.cli.ContainerKill(ctx, k.contID, "")
+	err := d.cli.ContainerKill(ctx, contID, "")
 	if err != nil {
-		return err
+		return errors.E(err, errors.Internal, op)
 	}
 	return nil
 }

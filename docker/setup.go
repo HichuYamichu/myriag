@@ -2,46 +2,48 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
-type SetupContainer struct {
-	cli       *client.Client
-	imageName string
-	contName  string
-}
+func (d *Docker) setupContainer(lang string) (string, error) {
+	const op errors.Op = "docker/Docker.setupContainer"
 
-func (sc *SetupContainer) Do() error {
+	imageName := fmt.Sprintf("myriag_%s", lang)
+	sf := snowflakes.Generate()
+	contName := fmt.Sprintf("myriag_%s_%d", lang, sf)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 
-	err := sc.startContainer(ctx)
+	err := d.startContainer(ctx, imageName, contName, lang)
 	if err != nil {
-		return err
+		return "", errors.E(err, op)
+	}
+	err = d.createEvalDir(ctx, contName)
+	if err != nil {
+		return "", errors.E(err, op)
+	}
+	err = d.chmodEvalDir(ctx, contName)
+	if err != nil {
+		return "", errors.E(err, op)
 	}
 
-	err = sc.createEvalDir(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = sc.chmodEvalDir(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return contName, nil
 }
 
-func (sc *SetupContainer) startContainer(ctx context.Context) error {
-	cresp, err := sc.cli.ContainerCreate(ctx,
+func (d *Docker) startContainer(ctx context.Context, imageName, contName, lang string) error {
+	const op errors.Op = "docker/Docker.startContainer"
+
+	cresp, err := d.cli.ContainerCreate(ctx,
 		&container.Config{
-			Image:           sc.imageName,
+			Image:           imageName,
 			User:            "1000:1000",
 			WorkingDir:      "/tmp/",
 			Tty:             true,
@@ -51,59 +53,82 @@ func (sc *SetupContainer) startContainer(ctx context.Context) error {
 		&container.HostConfig{
 			AutoRemove: true,
 			Resources: container.Resources{
-				Memory:     1.28e+8,
-				MemorySwap: 1.28e+8,
+				NanoCPUs:   getNanoCPUFor(lang),
+				Memory:     getMemoryFor(lang),
+				MemorySwap: getMemoryFor(lang),
 			},
 		},
 		nil,
-		sc.contName,
+		contName,
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	err = sc.cli.ContainerStart(ctx, cresp.ID, types.ContainerStartOptions{})
+	err = d.cli.ContainerStart(ctx, cresp.ID, types.ContainerStartOptions{})
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
 }
 
-func (sc *SetupContainer) createEvalDir(ctx context.Context) error {
-	iresp, err := sc.cli.ContainerExecCreate(
+func (d *Docker) createEvalDir(ctx context.Context, contName string) error {
+	const op errors.Op = "docker/Docker.createEvalDir"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		sc.contName,
+		contName,
 		types.ExecConfig{
 			Cmd: []string{"mkdir", "eval"},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	if err := sc.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return errors.E(err, errors.Internal)
+	if err := d.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
 }
 
-func (sc *SetupContainer) chmodEvalDir(ctx context.Context) error {
-	iresp, err := sc.cli.ContainerExecCreate(
+func (d *Docker) chmodEvalDir(ctx context.Context, contName string) error {
+	const op errors.Op = "docker/Docker.chmodEvalDir"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		sc.contName,
+		contName,
 		types.ExecConfig{
 			Cmd: []string{"chmod", "711", "eval"},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	if err := sc.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return errors.E(err, errors.Internal)
+	if err := d.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
+}
+
+func getMemoryFor(lang string) int64 {
+	key := fmt.Sprintf("languages.%s.memory", lang)
+	if viper.IsSet(key) {
+		return int64(viper.GetSizeInBytes(key))
+	} else {
+		return int64(viper.GetSizeInBytes("defaultLanguage.memory"))
+	}
+}
+
+func getNanoCPUFor(lang string) int64 {
+	key := fmt.Sprintf("languages.%s.cpus", lang)
+	if viper.IsSet(key) {
+		return int64(10e9 * viper.GetFloat64(key))
+	} else {
+		return int64(10e9 * viper.GetFloat64("defaultLanguage.cpus"))
+	}
 }

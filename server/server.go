@@ -9,8 +9,8 @@ import (
 	"github.com/hichuyamichu/myriag/errors"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/labstack/gommon/log"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -18,9 +18,15 @@ type Server struct {
 	docker *docker.Docker
 }
 
-func New(docker *docker.Docker) *Server {
+func New(docker *docker.Docker, logger *zap.Logger) *Server {
+	r := echo.New()
+	r.HideBanner = true
+	r.HTTPErrorHandler = newErrorHandler(logger)
+	r.Validator = newValidator()
+	r.Use(middleware.Recover())
+
 	server := &Server{
-		router: echo.New(),
+		router: r,
 		docker: docker,
 	}
 
@@ -38,21 +44,14 @@ func (s *Server) Start(host string, port string) error {
 }
 
 func (s *Server) configure() {
-	s.router.HideBanner = true
-	s.router.HTTPErrorHandler = httpErrorHandler
-	s.router.Validator = NewValidator()
-	s.router.Logger.SetLevel(log.INFO)
 
-	s.router.Use(middleware.Logger())
-	s.router.Use(middleware.Recover())
 }
 
 func (s *Server) setRoutes() {
-	api := s.router.Group("/api")
-	api.GET("/languages", s.languages)
-	api.GET("/containers", s.containers)
-	api.POST("/eval", s.eval)
-	api.POST("/cleanup", s.cleanup)
+	s.router.GET("/languages", s.languages)
+	s.router.GET("/containers", s.containers)
+	s.router.POST("/eval", s.eval)
+	s.router.POST("/cleanup", s.cleanup)
 }
 
 func (s *Server) languages(c echo.Context) error {
@@ -61,16 +60,18 @@ func (s *Server) languages(c echo.Context) error {
 }
 
 func (s *Server) containers(c echo.Context) error {
+	const op errors.Op = "server/Server.containers"
+
 	containers, err := s.docker.ListContainers()
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, op)
 	}
 
 	return c.JSON(http.StatusOK, containers)
 }
 
 func (s *Server) eval(c echo.Context) error {
-	const op errors.Op = "docker/handler.Eval"
+	const op errors.Op = "server/Server.eval"
 
 	type evalPayload struct {
 		Language string `json:"language" validate:"required"`
@@ -83,25 +84,60 @@ func (s *Server) eval(c echo.Context) error {
 	}
 
 	if err := c.Validate(p); err != nil {
-		return errors.E(err, errors.Invalid, op)
+		return errors.E(err, op)
 	}
 
+	retry := 0
+	maxRetry := getRetryCountFor(p.Language)
+try:
 	res, err := s.docker.Eval(p.Language, p.Code)
 	if err != nil {
-		return errors.E(err, errors.Internal, op)
+		if !errors.Is(err, errors.EvalTimeout) && retry <= maxRetry {
+			retry++
+			goto try
+		}
+		return errors.E(err, op)
 	}
 
 	type evalResponce struct {
 		Result string `json:"result"`
 	}
+
+	maxOut := getMaxOutputFor(p.Language)
+	// Go rune is 4 bytes wide
+	if uint(len(res)*4) > maxOut {
+		res = res[:maxOut/4]
+	}
+
 	return c.JSON(http.StatusOK, &evalResponce{Result: res})
 }
 
 func (s *Server) cleanup(c echo.Context) error {
+	const op errors.Op = "server/Server.cleanup"
+
 	containers, err := s.docker.Cleanup()
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, op)
 	}
 
 	return c.JSON(http.StatusOK, containers)
+}
+
+func getRetryCountFor(lang string) int {
+	key := fmt.Sprintf("languages.%s.retries", lang)
+	if viper.IsSet(key) {
+		return viper.GetInt(key)
+	} else {
+		return viper.GetInt("defaultLanguage.retries")
+	}
+}
+
+func getMaxOutputFor(lang string) (size uint) {
+	key := fmt.Sprintf("languages.%s.outputLimit", lang)
+	if viper.IsSet(key) {
+		size = viper.GetSizeInBytes(key)
+	} else {
+		size = viper.GetSizeInBytes("defaultLanguage.outputLimit")
+	}
+	return size
 }

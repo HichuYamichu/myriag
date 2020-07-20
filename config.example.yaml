@@ -1,0 +1,74 @@
+# Whether to build images concurrently.
+# This will take up more resources when building all the images for the first time.
+buildConcurrently: true
+
+# Whether to start containers on startup of myriad.
+prepareContainers: false
+
+# Interval in minutes to kill all running languages containers.
+cleanupInterval: 30
+
+# Port to run myriag on.
+port: 8081
+
+# Host to run myriag on.
+host: "127.0.0.1"
+
+# The default language configuration.
+defaultLanguage:
+    # The maximum memory and swap usage (separately) of a container.
+    memory: 256m
+
+    # The number of CPUs to use.
+    cpus: 0.25
+
+    # Time in seconds for an evaluation before the container kills itself.
+    timeout: 20
+
+    # The maximum number of concurrent evaluations in the container.
+    concurrent: 5
+
+    # The maximum number of retries when the evaluation fails due to a non-timeout related reason.
+    retries: 10
+
+    # The maximum number of bytes that can be outputted.
+    outputLimit: 4k
+
+# The languages to enable.
+# The fields available are the same as in 'defaultLanguage'.
+# The names are as in your 'languages' folder.
+languages:
+    - apl:
+        memory: 256m
+        cpus: 0.25
+        timeout: 20
+        concurrent: 5
+        retries: 10
+        outputLimit: 4k
+    - bash
+    - brainfuck
+    - c
+    - cpp
+    - csharp
+    - elixir
+    - erlang
+    - fsharp
+    - go
+    - haskell
+    - idris
+    - java
+    - javascript
+    - julia
+    - lua
+    - nim
+    - ocaml
+    - pascal
+    - perl
+    - php
+    - prolog
+    - python
+    - r
+    - racket
+    - ruby
+    - rust
+    - typescript

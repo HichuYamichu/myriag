@@ -7,103 +7,99 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
-type Eval struct {
-	cli      *client.Client
-	contName string
-	dir      string
-	code     string
-	result   string
-}
+func (d *Docker) eval(contName string, code string, timeout time.Duration) (string, error) {
+	const op errors.Op = "docker/Docker.eval"
 
-func (e *Eval) Do() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	err := e.createUniqueEvalDir(ctx)
-	if err != nil {
-		return err
-	}
+	sf := snowflakes.Generate()
+	dir := fmt.Sprintf("eval/%d", sf)
 
-	err = e.chmodUniqueEvalDir(ctx)
+	err := d.createUniqueEvalDir(ctx, contName, dir)
 	if err != nil {
-		return err
+		return "", errors.E(err, op)
 	}
-
-	err = e.runExec(ctx)
+	err = d.chmodUniqueEvalDir(ctx, contName, dir)
 	if err != nil {
-		return err
+		return "", errors.E(err, op)
 	}
-
-	err = e.rmUniqueEvalDir(ctx)
+	res, err := d.runExec(ctx, contName, dir, code)
 	if err != nil {
-		return err
+		return "", errors.E(err, op)
 	}
+	_ = d.rmUniqueEvalDir(ctx, contName, dir)
 
-	return nil
+	return res, nil
 }
 
-func (e *Eval) createUniqueEvalDir(ctx context.Context) error {
-	iresp, err := e.cli.ContainerExecCreate(
+func (d *Docker) createUniqueEvalDir(ctx context.Context, contName, dir string) error {
+	const op errors.Op = "docker/Docker.createUniqueEvalDir"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		e.contName,
+		contName,
 		types.ExecConfig{
-			Cmd: []string{"mkdir", e.dir},
+			Cmd: []string{"mkdir", dir},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	if err := e.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return errors.E(err, errors.Internal)
+	if err := d.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
 }
 
-func (e *Eval) chmodUniqueEvalDir(ctx context.Context) error {
-	iresp, err := e.cli.ContainerExecCreate(
+func (d *Docker) chmodUniqueEvalDir(ctx context.Context, contName, dir string) error {
+	const op errors.Op = "docker/Docker.chmodUniqueEvalDir"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		e.contName,
+		contName,
 		types.ExecConfig{
-			Cmd: []string{"chmod", "777", e.dir},
+			Cmd: []string{"chmod", "777", dir},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	if err := e.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return errors.E(err, errors.Internal)
+	if err := d.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil
 }
 
-func (e *Eval) runExec(ctx context.Context) error {
-	iresp, err := e.cli.ContainerExecCreate(
+func (d *Docker) runExec(ctx context.Context, contName, dir, code string) (string, error) {
+	const op errors.Op = "docker/Docker.runExec"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		e.contName,
+		contName,
 		types.ExecConfig{
 			User:         "1001:1001",
 			AttachStdout: true,
 			AttachStderr: true,
-			WorkingDir:   fmt.Sprintf("/tmp/%s", e.dir),
-			Cmd:          []string{"/bin/sh", "/var/run/run.sh", e.code},
+			WorkingDir:   fmt.Sprintf("/tmp/%s", dir),
+			Cmd:          []string{"/bin/sh", "/var/run/run.sh", code},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return "", errors.E(err, errors.Internal, op)
 	}
 
-	aresp, err := e.cli.ContainerExecAttach(ctx, iresp.ID, types.ExecStartCheck{})
+	aresp, err := d.cli.ContainerExecAttach(ctx, iresp.ID, types.ExecStartCheck{})
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return "", errors.E(err, errors.Internal, op)
 	}
 	defer aresp.Close()
 
@@ -118,42 +114,42 @@ func (e *Eval) runExec(ctx context.Context) error {
 	select {
 	case err := <-outputDone:
 		if err != nil {
-			return errors.E(err, errors.Internal)
+			return "", errors.E(err, errors.Internal, op)
 		}
 		break
 
 	case <-ctx.Done():
-		return errors.E(errors.Errorf("evaluation timeout"), errors.Timeout)
+		return "", errors.E(errors.Errorf("evaluation timeout"), errors.EvalTimeout, op)
 	}
 
-	_, err = e.cli.ContainerExecInspect(ctx, iresp.ID)
+	_, err = d.cli.ContainerExecInspect(ctx, iresp.ID)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return "", errors.E(err, errors.Internal, op)
 	}
 
 	if errBuf.Len() != 0 {
-		e.result = errBuf.String()
+		return errBuf.String(), nil
 	} else {
-		e.result = outBuf.String()
+		return outBuf.String(), nil
 	}
-
-	return nil
 }
 
-func (e *Eval) rmUniqueEvalDir(ctx context.Context) error {
-	iresp, err := e.cli.ContainerExecCreate(
+func (d *Docker) rmUniqueEvalDir(ctx context.Context, contName, dir string) error {
+	const op errors.Op = "docker/Docker.rmUniqueEvalDir"
+
+	iresp, err := d.cli.ContainerExecCreate(
 		ctx,
-		e.contName,
+		contName,
 		types.ExecConfig{
-			Cmd: []string{"rm", "-rf", e.dir},
+			Cmd: []string{"rm", "-rf", dir},
 		},
 	)
 	if err != nil {
-		return errors.E(err, errors.Internal)
+		return errors.E(err, errors.Internal, op)
 	}
 
-	if err := e.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
-		return errors.E(err, errors.Internal)
+	if err := d.cli.ContainerExecStart(ctx, iresp.ID, types.ExecStartCheck{}); err != nil {
+		return errors.E(err, errors.Internal, op)
 	}
 
 	return nil

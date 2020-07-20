@@ -19,16 +19,6 @@ Example response:
 ["go", "typescript"]
 ```
 
-### **POST** `/create_container`
-Creates a language container (if not already present).  
-JSON payload with `language` key.  
-The `language` is as in the name of a subfolder in the `languages` directory.  
-Example payload:
-
-```json
-{ "language": "go" }
-```
-
 ### **POST** `/eval`
 Evaluate code.  
 JSON payload with `language` and `code` keys.  

@@ -6,21 +6,18 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
-type listContainer struct {
-	cli *client.Client
-}
+func (d *Docker) listContainers() ([]string, error) {
+	const op errors.Op = "docker/Docker.listContainers"
 
-func (lc *listContainer) Do() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 
-	containers, err := lc.cli.ContainerList(ctx, types.ContainerListOptions{})
+	containers, err := d.cli.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
-		return nil, errors.E(err, errors.Internal)
+		return nil, errors.E(err, errors.Internal, op)
 	}
 
 	res := make([]string, 0)
