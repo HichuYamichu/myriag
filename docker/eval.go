@@ -4,35 +4,47 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/hichuyamichu/myriag/errors"
+	"go.uber.org/zap"
 )
 
-func (d *Docker) eval(contName string, code string, timeout time.Duration) (string, error) {
+func (d *Docker) eval(ctx context.Context, contName string, code string) (string, error) {
 	const op errors.Op = "docker/Docker.eval"
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 
 	sf := snowflakes.Generate()
 	dir := fmt.Sprintf("eval/%d", sf)
 
+	d.logger.Debug("creating unique eval dir", zap.String("container", contName), zap.String("dir", dir))
 	err := d.createUniqueEvalDir(ctx, contName, dir)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
+	d.logger.Debug("unique eval dir created", zap.String("container", contName), zap.String("dir", dir))
+
+	d.logger.Debug("chmoding unique eval dir", zap.String("container", contName), zap.String("dir", dir))
 	err = d.chmodUniqueEvalDir(ctx, contName, dir)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
+	d.logger.Debug("chmoded unique eval dir", zap.String("container", contName), zap.String("dir", dir))
+
+	d.logger.Debug("evaluating code", zap.String("container", contName), zap.String("dir", dir))
 	res, err := d.runExec(ctx, contName, dir, code)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
-	_ = d.rmUniqueEvalDir(ctx, contName, dir)
+	d.logger.Debug("code evaluated", zap.String("container", contName), zap.String("dir", dir))
+
+	d.logger.Debug("removing unique eval dir", zap.String("container", contName), zap.String("dir", dir))
+	err = d.rmUniqueEvalDir(ctx, contName, dir)
+	if err != nil {
+		d.logger.Error("failed to remove unique eval dir", zap.Error(err))
+	} else {
+		d.logger.Debug("unique eval dir removed", zap.String("container", contName), zap.String("dir", dir))
+	}
 
 	return res, nil
 }

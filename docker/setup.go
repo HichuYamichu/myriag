@@ -3,37 +3,42 @@ package docker
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
-func (d *Docker) setupContainer(lang string) (string, error) {
+func (d *Docker) setupContainer(ctx context.Context, lang string) (string, error) {
 	const op errors.Op = "docker/Docker.setupContainer"
 
 	imageName := fmt.Sprintf("myriag_%s", lang)
 	sf := snowflakes.Generate()
 	contName := fmt.Sprintf("myriag_%s_%d", lang, sf)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
-
+	d.logger.Debug("starting container", zap.String("lang", lang), zap.String("container", contName))
 	err := d.startContainer(ctx, imageName, contName, lang)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
+	d.logger.Debug("started container", zap.String("lang", lang), zap.String("container", contName))
+
+	d.logger.Debug("creating eval dir", zap.String("container", contName))
 	err = d.createEvalDir(ctx, contName)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
+	d.logger.Debug("created eval dir", zap.String("container", contName))
+
+	d.logger.Debug("chmoding eval dir", zap.String("container", contName))
 	err = d.chmodEvalDir(ctx, contName)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
+	d.logger.Debug("chmoded eval dir", zap.String("container", contName))
 
 	return contName, nil
 }

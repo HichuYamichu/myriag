@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/hichuyamichu/myriag/docker"
 	"github.com/hichuyamichu/myriag/errors"
@@ -62,7 +63,9 @@ func (s *Server) languages(c echo.Context) error {
 func (s *Server) containers(c echo.Context) error {
 	const op errors.Op = "server/Server.containers"
 
-	containers, err := s.docker.ListContainers()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	containers, err := s.docker.ListContainers(ctx)
 	if err != nil {
 		return errors.E(err, op)
 	}
@@ -87,10 +90,14 @@ func (s *Server) eval(c echo.Context) error {
 		return errors.E(err, op)
 	}
 
+	timeout := getTimeoutFor(p.Language)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	retry := 0
 	maxRetry := getRetryCountFor(p.Language)
 try:
-	res, err := s.docker.Eval(p.Language, p.Code)
+	res, err := s.docker.Eval(ctx, p.Language, p.Code)
 	if err != nil {
 		if !errors.Is(err, errors.EvalTimeout) && retry <= maxRetry {
 			retry++
@@ -115,7 +122,9 @@ try:
 func (s *Server) cleanup(c echo.Context) error {
 	const op errors.Op = "server/Server.cleanup"
 
-	containers, err := s.docker.Cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	containers, err := s.docker.Cleanup(ctx)
 	if err != nil {
 		return errors.E(err, op)
 	}
@@ -140,4 +149,13 @@ func getMaxOutputFor(lang string) (size uint) {
 		size = viper.GetSizeInBytes("defaultLanguage.outputLimit")
 	}
 	return size
+}
+
+func getTimeoutFor(lang string) time.Duration {
+	key := fmt.Sprintf("languages.%s.timeout", lang)
+	if viper.IsSet(key) {
+		return time.Second * viper.GetDuration(key)
+	} else {
+		return time.Second * viper.GetDuration("defaultLanguage.timeout")
+	}
 }

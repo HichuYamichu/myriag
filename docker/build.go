@@ -3,20 +3,19 @@ package docker
 import (
 	"context"
 	"fmt"
-	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/docker/docker/api/types"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
-func (d *Docker) build(lang string) error {
+func (d *Docker) build(ctx context.Context, lang string) error {
 	const op errors.Op = "docker/Docker.build"
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
 	sf := snowflakes.Generate()
-	_ = fmt.Sprintf("myriag_%s_%d", lang, sf)
+	imageName := fmt.Sprintf("myriag_%s_%d", lang, sf)
+	d.logger.Debug("building image", zap.String("image", imageName))
 	// buildContext := strings.NewReader("/home/hy/source/go/myriag/languages/bash/Dockerfile")
 	// ibres, err := b.cli.ImageBuild(ctx, buildContext, types.ImageBuildOptions{Dockerfile: "Dockerfile"})
 	ibres, err := d.cli.ImageBuild(ctx, nil, types.ImageBuildOptions{Dockerfile: "./dockerfile"})
@@ -25,5 +24,7 @@ func (d *Docker) build(lang string) error {
 	}
 	defer ibres.Body.Close()
 	fmt.Println(ibres)
+
+	d.logger.Debug("build complete", zap.String("image", imageName))
 	return nil
 }

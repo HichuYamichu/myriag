@@ -76,18 +76,20 @@ func main() {
 	cli.NegotiateAPIVersion(context.Background())
 	docker := docker.New(cli, logger)
 
-	// if viper.GetBool("buildConcurrently") {
-	// 	err = docker.BuildConcurrently(viper.GetStringSlice("languages"))
-	// } else {
-	// 	err = docker.Build(viper.GetStringSlice("languages"))
-	// }
-	// if err != nil {
-	// 	logger.Error("container build failed", zap.Error(err))
-	// 	os.Exit(1)
-	// }
+	langs := languages()
+
+	if viper.GetBool("buildConcurrently") {
+		err = docker.BuildConcurrently(context.Background(), langs)
+	} else {
+		err = docker.Build(context.Background(), langs)
+	}
+	if err != nil {
+		logger.Error("container build failed", zap.Error(err))
+		os.Exit(1)
+	}
 
 	if viper.GetBool("prepareContainers") {
-		_, err = docker.SetupContainers(viper.GetStringSlice("languages"))
+		err = docker.SetupContainers(context.Background(), langs)
 		if err != nil {
 			logger.Error("container setup failed", zap.Error(err))
 			os.Exit(1)
@@ -96,7 +98,7 @@ func main() {
 
 	if viper.IsSet("cleanupInterval") {
 		duration := time.Duration(viper.GetInt("cleanupInterval"))
-		docker.CleanupWithInterval(time.Minute * duration)
+		docker.CleanupWithInterval(time.Minute*duration, time.Second*15)
 	}
 
 	srv := server.New(docker, logger)
@@ -113,4 +115,14 @@ func main() {
 	port := viper.GetString("port")
 	host := viper.GetString("host")
 	fmt.Println(srv.Start(host, port))
+}
+
+func languages() []string {
+	res := make([]string, 0)
+	languages := viper.GetStringMap("languages")
+	for language := range languages {
+		res = append(res, language)
+	}
+
+	return res
 }
