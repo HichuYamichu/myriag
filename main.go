@@ -61,12 +61,15 @@ func main() {
 		DisableCaller:     true,
 		DisableStacktrace: true,
 		EncoderConfig: zapcore.EncoderConfig{
-			MessageKey:  "message",
-			LevelKey:    "level",
-			EncodeLevel: zapcore.CapitalLevelEncoder,
+			MessageKey:     "message",
+			LevelKey:       "level",
+			EncodeLevel:    zapcore.CapitalLevelEncoder,
+			EncodeDuration: zapcore.StringDurationEncoder,
 		},
 	}.Build()
 	defer logger.Sync()
+
+	langs := languages()
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -74,9 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 	cli.NegotiateAPIVersion(context.Background())
-	docker := docker.New(cli, logger)
-
-	langs := languages()
+	docker := docker.New(cli, logger, langs)
 
 	if viper.GetBool("buildConcurrently") {
 		err = docker.BuildConcurrently(context.Background(), langs)

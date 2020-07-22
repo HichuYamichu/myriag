@@ -2,7 +2,9 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,12 +18,17 @@ import (
 var snowflakes, _ = snowflake.NewNode(1)
 
 type Docker struct {
-	cli    *client.Client
-	logger *zap.Logger
+	cli       *client.Client
+	logger    *zap.Logger
+	languages []string
+
+	// evalQueue stores buffered channels per container
+	// used to limit concurrent evals.
+	evalQueue sync.Map
 }
 
-func New(cli *client.Client, logger *zap.Logger) *Docker {
-	return &Docker{cli: cli, logger: logger}
+func New(cli *client.Client, logger *zap.Logger, langs []string) *Docker {
+	return &Docker{cli: cli, logger: logger, languages: langs}
 }
 
 func (d *Docker) Build(ctx context.Context, langs []string) error {
@@ -73,7 +80,7 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 	const op errors.Op = "docker/Docker.Eval"
 	d.logger.Info("starting eval", zap.String("language", lang), zap.String("code", code))
 
-	err := isLangSupported(lang)
+	err := d.isLangSupported(lang)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
@@ -83,7 +90,12 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 		return "", errors.E(err, op)
 	}
 
+	max := getMaxConcurrentEvlasFor(lang)
+	i, _ := d.evalQueue.LoadOrStore(contName, make(chan struct{}, max))
+	q := i.(chan struct{})
+	q <- struct{}{}
 	res, err := d.eval(ctx, contName, code)
+	<-q
 	if err != nil {
 		return "", errors.E(err, op)
 	}
@@ -126,7 +138,7 @@ func (d *Docker) SetupContainer(ctx context.Context, lang string) (string, error
 	const op errors.Op = "docker/Docker.SetupContainer"
 	d.logger.Info("setting up container", zap.String("lang", lang))
 
-	err := isLangSupported(lang)
+	err := d.isLangSupported(lang)
 	if err != nil {
 		return "", errors.E(err, op)
 	}
@@ -142,6 +154,7 @@ func (d *Docker) SetupContainer(ctx context.Context, lang string) (string, error
 
 func (d *Docker) CleanupWithInterval(interval time.Duration, timeout time.Duration) {
 	const _ errors.Op = "docker/Docker.CleanupWithInterval"
+	// d.logger.Info("periodic cleanup is set", zap.Duration("interval", interval))
 	d.logger.Info("periodic cleanup is set", zap.Duration("interval", interval))
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -222,23 +235,29 @@ func (d *Docker) fetchConntainerFor(ctx context.Context, lang string) (string, e
 		return "", errors.E(err, op)
 	}
 
-	if len(containers) == 0 {
+	desiredConts := make([]string, 0)
+	for _, contName := range containers {
+		if strings.HasPrefix(contName, fmt.Sprintf("myriag_%s", lang)) {
+			desiredConts = append(desiredConts, contName)
+		}
+	}
+
+	if len(desiredConts) == 0 {
 		contName, err := d.SetupContainer(ctx, lang)
 		if err != nil {
 			return "", errors.E(err, op)
 		}
 		return contName, nil
 	} else {
-		return containers[rand.Intn(len(containers))], nil
+		return desiredConts[rand.Intn(len(desiredConts))], nil
 	}
 }
 
-func isLangSupported(lang string) error {
+func (d *Docker) isLangSupported(lang string) error {
 	const op errors.Op = "docker/isLangSupported"
 
-	languages := viper.GetStringMap("languages")
 	exists := false
-	for supportedLanguage := range languages {
+	for _, supportedLanguage := range d.languages {
 		if supportedLanguage == lang {
 			exists = true
 			break
@@ -248,4 +267,13 @@ func isLangSupported(lang string) error {
 		return errors.E(errors.Errorf("language `%s` not found", lang), errors.LanguageNotFound, op)
 	}
 	return nil
+}
+
+func getMaxConcurrentEvlasFor(lang string) int {
+	key := fmt.Sprintf("languages.%s.concurrent", lang)
+	if viper.IsSet(key) {
+		return viper.GetInt(key)
+	} else {
+		return viper.GetInt("defaultLanguage.concurrent")
+	}
 }
