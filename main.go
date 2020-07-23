@@ -51,6 +51,7 @@ func init() {
 	viper.SetDefault("defaultLanguage.concurrent", 5)
 	viper.SetDefault("defaultLanguage.retries", 10)
 	viper.SetDefault("defaultLanguage.outputLimit", "4kb")
+	viper.SetDefault("languages_path", "./languages")
 }
 
 func main() {

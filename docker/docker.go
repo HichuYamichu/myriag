@@ -42,7 +42,7 @@ func (d *Docker) Build(ctx context.Context, langs []string) error {
 		}
 	}
 
-	d.logger.Info("finished building images", zap.Strings("languages", langs))
+	d.logger.Info("finished building images")
 	return nil
 }
 

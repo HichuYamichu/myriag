@@ -1,6 +1,6 @@
-# NOTE: myriag and myriad confgs are not interchangable.
-# There are subtle diferences, namely:
-#   - you have to spell out you mean bytes so it's 256mb instead of 256m.
+# NOTE: myriag and myriad configs are not interchangeable.
+# There are subtle differences, namely:
+#   - you have to spell out you mean bytes so it's 256mb instead of 256m,
 #   - languages field is not object array but a nested object.
 
 # Whether to build images concurrently.
