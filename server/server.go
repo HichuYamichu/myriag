@@ -26,14 +26,17 @@ func New(docker *docker.Docker, logger *zap.Logger) *Server {
 	r.Validator = newValidator()
 	r.Use(middleware.Recover())
 
-	server := &Server{
+	s := &Server{
 		router: r,
 		docker: docker,
 	}
 
-	server.configure()
-	server.setRoutes()
-	return server
+	s.router.GET("/languages", s.languages)
+	s.router.GET("/containers", s.containers)
+	s.router.POST("/eval", s.eval)
+	s.router.POST("/cleanup", s.cleanup)
+
+	return s
 }
 
 func (s *Server) Shutdown(ctx context.Context) {
@@ -42,17 +45,6 @@ func (s *Server) Shutdown(ctx context.Context) {
 
 func (s *Server) Start(host string, port string) error {
 	return s.router.Start(fmt.Sprintf("%s:%s", host, port))
-}
-
-func (s *Server) configure() {
-
-}
-
-func (s *Server) setRoutes() {
-	s.router.GET("/languages", s.languages)
-	s.router.GET("/containers", s.containers)
-	s.router.POST("/eval", s.eval)
-	s.router.POST("/cleanup", s.cleanup)
 }
 
 func (s *Server) languages(c echo.Context) error {

@@ -36,7 +36,7 @@ func init() {
 	}
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("fatal error config file: %s", err)
+		log.Fatalf("fatal error with config file: %s", err)
 	}
 	if *languages_path != "" {
 		viper.Set("languages_path", *languages_path)
@@ -97,10 +97,8 @@ func main() {
 		}
 	}
 
-	if viper.IsSet("cleanupInterval") {
-		duration := time.Duration(viper.GetInt("cleanupInterval"))
-		docker.CleanupWithInterval(time.Minute*duration, time.Second*15)
-	}
+	duration := time.Duration(viper.GetInt("cleanupInterval"))
+	docker.CleanupWithInterval(time.Minute * duration)
 
 	srv := server.New(docker, logger)
 

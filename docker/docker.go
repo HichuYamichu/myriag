@@ -33,16 +33,16 @@ func New(cli *client.Client, logger *zap.Logger, langs []string) *Docker {
 
 func (d *Docker) Build(ctx context.Context, langs []string) error {
 	const op errors.Op = "docker/Docker.Build"
-
 	d.logger.Info("building images", zap.Strings("languages", langs))
+
 	for _, lang := range langs {
 		err := d.build(ctx, lang)
 		if err != nil {
 			return errors.E(err, op)
 		}
 	}
-	d.logger.Info("finished building images", zap.Strings("languages", langs))
 
+	d.logger.Info("finished building images", zap.Strings("languages", langs))
 	return nil
 }
 
@@ -152,12 +152,11 @@ func (d *Docker) SetupContainer(ctx context.Context, lang string) (string, error
 	return contName, nil
 }
 
-func (d *Docker) CleanupWithInterval(interval time.Duration, timeout time.Duration) {
+func (d *Docker) CleanupWithInterval(interval time.Duration) {
 	const _ errors.Op = "docker/Docker.CleanupWithInterval"
-	// d.logger.Info("periodic cleanup is set", zap.Duration("interval", interval))
 	d.logger.Info("periodic cleanup is set", zap.Duration("interval", interval))
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 	ticker := time.NewTicker(interval)
 	go func() {
