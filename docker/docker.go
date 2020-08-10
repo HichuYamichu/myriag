@@ -22,8 +22,7 @@ type Docker struct {
 	logger    *zap.Logger
 	languages []string
 
-	// evalQueue stores buffered channels per container
-	// used to limit concurrent evals.
+	// evalQueue stores semaphores (buffered channels) used to limit concurrent evals
 	evalQueue sync.Map
 }
 
@@ -91,11 +90,11 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 	}
 
 	max := getMaxConcurrentEvlasFor(lang)
-	i, _ := d.evalQueue.LoadOrStore(contName, make(chan struct{}, max))
-	q := i.(chan struct{})
-	q <- struct{}{}
+	entry, _ := d.evalQueue.LoadOrStore(contName, make(chan struct{}, max))
+	sem := entry.(chan struct{})
+	sem <- struct{}{}
 	res, err := d.eval(ctx, contName, code)
-	<-q
+	<-sem
 	if err != nil {
 		return "", errors.E(err, op)
 	}
