@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/hichuyamichu/myriag/config"
 	"github.com/hichuyamichu/myriag/errors"
 )
 
@@ -58,9 +58,9 @@ func (d *Docker) startContainer(ctx context.Context, imageName, contName, lang s
 		&container.HostConfig{
 			AutoRemove: true,
 			Resources: container.Resources{
-				NanoCPUs:   getNanoCPUFor(lang),
-				Memory:     getMemoryFor(lang),
-				MemorySwap: getMemoryFor(lang),
+				NanoCPUs:   config.NanoCPUFor(lang),
+				Memory:     config.MemoryFor(lang),
+				MemorySwap: config.MemoryFor(lang),
 			},
 		},
 		nil,
@@ -118,22 +118,4 @@ func (d *Docker) chmodEvalDir(ctx context.Context, contName string) error {
 	}
 
 	return nil
-}
-
-func getMemoryFor(lang string) int64 {
-	key := fmt.Sprintf("languages.%s.memory", lang)
-	if viper.IsSet(key) {
-		return int64(viper.GetSizeInBytes(key))
-	} else {
-		return int64(viper.GetSizeInBytes("defaultLanguage.memory"))
-	}
-}
-
-func getNanoCPUFor(lang string) int64 {
-	key := fmt.Sprintf("languages.%s.cpus", lang)
-	if viper.IsSet(key) {
-		return int64(10e9 * viper.GetFloat64(key))
-	} else {
-		return int64(10e9 * viper.GetFloat64("defaultLanguage.cpus"))
-	}
 }

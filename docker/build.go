@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/docker/docker/api/types"
+	"github.com/hichuyamichu/myriag/config"
 	"github.com/hichuyamichu/myriag/errors"
-	"github.com/spf13/viper"
 )
 
 func (d *Docker) build(ctx context.Context, lang string) error {
@@ -22,7 +22,7 @@ func (d *Docker) build(ctx context.Context, lang string) error {
 	imageName := fmt.Sprintf("myriag_%s", lang)
 	d.logger.Debug("building image", zap.String("image", imageName))
 
-	langDir := viper.GetString("languages_path")
+	langDir := config.PathToLanguages()
 	source := fmt.Sprintf("%s/%s", langDir, lang)
 
 	buffer := new(bytes.Buffer)
@@ -37,9 +37,10 @@ func (d *Docker) build(ctx context.Context, lang string) error {
 			return nil
 		}
 
-		header := new(tar.Header)
-		header.Name = fi.Name()
-		header.Size = fi.Size()
+		header, err := tar.FileInfoHeader(fi, file)
+		if err != nil {
+			return err
+		}
 
 		if err := tarfileWriter.WriteHeader(header); err != nil {
 			return err

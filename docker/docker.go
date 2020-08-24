@@ -10,24 +10,23 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/docker/docker/client"
+	"github.com/hichuyamichu/myriag/config"
 	"github.com/hichuyamichu/myriag/errors"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
 var snowflakes, _ = snowflake.NewNode(1)
 
 type Docker struct {
-	cli       *client.Client
-	logger    *zap.Logger
-	languages []string
+	cli    *client.Client
+	logger *zap.Logger
 
 	// evalQueue stores semaphores (buffered channels) used to limit concurrent evals
 	evalQueue sync.Map
 }
 
-func New(cli *client.Client, logger *zap.Logger, langs []string) *Docker {
-	return &Docker{cli: cli, logger: logger, languages: langs}
+func New(cli *client.Client, logger *zap.Logger) *Docker {
+	return &Docker{cli: cli, logger: logger}
 }
 
 func (d *Docker) Build(ctx context.Context, langs []string) error {
@@ -79,9 +78,8 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 	const op errors.Op = "docker/Docker.Eval"
 	d.logger.Info("starting eval", zap.String("language", lang), zap.String("code", code))
 
-	err := d.isLangSupported(lang)
-	if err != nil {
-		return "", errors.E(err, op)
+	if !config.IsLangSupported(lang) {
+		return "", errors.E(errors.LanguageNotFound, op)
 	}
 
 	contName, err := d.fetchConntainerFor(ctx, lang)
@@ -89,7 +87,7 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 		return "", errors.E(err, op)
 	}
 
-	max := getMaxConcurrentEvlasFor(lang)
+	max := config.MaxConcurrentEvlasFor(lang)
 	entry, _ := d.evalQueue.LoadOrStore(contName, make(chan struct{}, max))
 	sem := entry.(chan struct{})
 	sem <- struct{}{}
@@ -99,8 +97,14 @@ func (d *Docker) Eval(ctx context.Context, lang string, code string) (string, er
 		return "", errors.E(err, op)
 	}
 
+	maxOut := int(config.MaxOutputFor(lang))
+	actuall := res.Len()
+	if actuall > maxOut {
+		res.Truncate(maxOut)
+	}
+
 	d.logger.Info("finished eval", zap.String("container", contName))
-	return res, nil
+	return res.String(), nil
 }
 
 func (d *Docker) SetupContainers(ctx context.Context, langs []string) error {
@@ -137,9 +141,8 @@ func (d *Docker) SetupContainer(ctx context.Context, lang string) (string, error
 	const op errors.Op = "docker/Docker.SetupContainer"
 	d.logger.Info("setting up container", zap.String("lang", lang))
 
-	err := d.isLangSupported(lang)
-	if err != nil {
-		return "", errors.E(err, op)
+	if !config.IsLangSupported(lang) {
+		return "", errors.E(errors.LanguageNotFound, op)
 	}
 
 	contName, err := d.setupContainer(ctx, lang)
@@ -155,13 +158,11 @@ func (d *Docker) CleanupWithInterval(interval time.Duration) {
 	const _ errors.Op = "docker/Docker.CleanupWithInterval"
 	d.logger.Info("periodic cleanup is set", zap.Duration("interval", interval))
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
 	ticker := time.NewTicker(interval)
 	go func() {
 		for {
 			<-ticker.C
-			cleaned, err := d.Cleanup(ctx)
+			cleaned, err := d.Cleanup(context.Background())
 			if err != nil {
 				d.logger.Error("failed to cleanup containers", zap.Error(err))
 			}
@@ -248,30 +249,5 @@ func (d *Docker) fetchConntainerFor(ctx context.Context, lang string) (string, e
 		return contName, nil
 	} else {
 		return desiredConts[rand.Intn(len(desiredConts))], nil
-	}
-}
-
-func (d *Docker) isLangSupported(lang string) error {
-	const op errors.Op = "docker/isLangSupported"
-
-	exists := false
-	for _, supportedLanguage := range d.languages {
-		if supportedLanguage == lang {
-			exists = true
-			break
-		}
-	}
-	if !exists {
-		return errors.E(errors.Errorf("language `%s` not found", lang), errors.LanguageNotFound, op)
-	}
-	return nil
-}
-
-func getMaxConcurrentEvlasFor(lang string) int {
-	key := fmt.Sprintf("languages.%s.concurrent", lang)
-	if viper.IsSet(key) {
-		return viper.GetInt(key)
-	} else {
-		return viper.GetInt("defaultLanguage.concurrent")
 	}
 }
