@@ -23,6 +23,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/viper v1.7.1
-	go.uber.org/zap v1.15.0
+	go.uber.org/zap v1.16.0
 	gotest.tools/v3 v3.0.2 // indirect
 )
