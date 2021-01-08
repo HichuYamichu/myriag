@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine
 
 RUN apk update
 RUN apk add lua5.3

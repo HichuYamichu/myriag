@@ -1,6 +1,6 @@
 FROM node:alpine
-LABEL author="iCrawl"
+LABEL author="1Computer1"
 
-RUN yarn global add ts-node typescript
+RUN yarn global add typescript @types/node
 
 COPY run.sh /var/run/

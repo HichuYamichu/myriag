@@ -1,5 +1,2 @@
-#!/bin/sh
-set -e
-
-printf %s "$1" > program.c
-gcc program.c -o program && ./program || true
+cat > program.c
+gcc program.c -o program && ./program

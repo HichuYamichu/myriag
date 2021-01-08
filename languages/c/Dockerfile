@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine
 LABEL author="1Computer1"
 
 RUN apk update
