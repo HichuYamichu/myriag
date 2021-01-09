@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/spf13/viper"
@@ -96,10 +97,26 @@ func MemoryFor(lang string) int64 {
 func NanoCPUFor(lang string) int64 {
 	key := fmt.Sprintf("languages.%s.cpus", lang)
 	if viper.IsSet(key) {
-		return int64(10e9 * viper.GetFloat64(key))
+		res, _ := ParseCPUs(viper.GetString(key))
+		return res
+		// return int64(10e9 * viper.GetFloat64(key))
 	} else {
-		return int64(10e9 * viper.GetFloat64("defaultLanguage.cpus"))
+		res, _ := ParseCPUs(viper.GetString("defaultLanguage.cpus"))
+		return res
+		// return int64(10e9 * viper.GetFloat64("defaultLanguage.cpus"))
 	}
+}
+
+func ParseCPUs(value string) (int64, error) {
+	cpu, ok := new(big.Rat).SetString(value)
+	if !ok {
+		return 0, fmt.Errorf("failed to parse %v as a rational number", value)
+	}
+	nano := cpu.Mul(cpu, big.NewRat(1e9, 1))
+	if !nano.IsInt() {
+		return 0, fmt.Errorf("value is too precise")
+	}
+	return nano.Num().Int64(), nil
 }
 
 func RetryCountFor(lang string) int {
